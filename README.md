@@ -51,17 +51,68 @@ Visit: http://127.0.0.1:8000/
 - `apps/` domain apps: `core`, `dashboard`, `funnerlife`, `salla`, `users`
 - `docs/` includes `SRS.md`
 
-## Next Implementation Steps (from SRS Plan)
-1. Define data models (players, transactions, api_audit_logs, webhook_events, etc.)
-2. Implement Salla webhook ingestion with HMAC verification & idempotency.
-3. FunnerLife API client + audit logging.
-4. Admin dashboard endpoints & basic UI scaffolding.
-5. Manual adjustment endpoint.
-6. Health & CSV export utilities.
-
-
-
-
+## Project Structure (Tree)
+```text
+Salla-Funnerlife-Integration/
+├── manage.py
+├── requirements.txt
+├── README.md
+├── .env.example
+├── .gitignore
+├── db.sqlite3
+├── config/
+│   ├── settings.py
+│   ├── urls.py
+│   ├── asgi.py
+│   ├── wsgi.py
+│   └── __init__.py
+├── apps/
+│   ├── __init__.py
+│   ├── core/
+│   │   ├── apps.py
+│   │   ├── admin.py
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   ├── tests.py
+│   │   └── migrations/
+│   │       └── __init__.py
+│   ├── dashboard/
+│   │   ├── apps.py
+│   │   ├── admin.py
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   ├── tests.py
+│   │   └── migrations/
+│   │       └── __init__.py
+│   ├── funnerlife/
+│   │   ├── apps.py
+│   │   ├── admin.py
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   ├── tests.py
+│   │   └── migrations/
+│   │       └── __init__.py
+│   ├── salla/
+│   │   ├── apps.py
+│   │   ├── admin.py
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   ├── tests.py
+│   │   └── migrations/
+│   │       └── __init__.py
+│   └── users/
+│       ├── apps.py
+│       ├── admin.py
+│       ├── models.py
+│       ├── views.py
+│       ├── tests.py
+│       └── migrations/
+│           └── __init__.py
+├── docs/
+│   ├── SRS.md
+│   └── plan.md
+└── (.venv/, .idea/, __pycache__/ omitted)
+```
 
 ## Reference
 Full specification & acceptance criteria: `docs/SRS.md`.
