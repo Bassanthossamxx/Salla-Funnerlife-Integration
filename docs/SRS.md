@@ -86,6 +86,19 @@ Support (manual refund process) ↔ Admin Dashboard (no auto refund)
 
 ---
 
+## 4.a Django Apps & Project Setup
+
+The Django backend is organized into the following apps (enabled in `config/settings.py`):
+- `apps.core` – base utilities, shared abstractions
+- `apps.salla` – Salla OAuth, webhooks, order processing
+- `apps.funnerlife` – FunnerLife API client and integration helpers
+- `apps.dashboard` – internal admin/dashboard endpoints & views
+- `apps.users` – internal user/RBAC scaffolding
+
+Database: SQLite (single file `db.sqlite3`) for ledger + audit trail per constraints in Section 3.
+
+---
+
 ## 5. Functional Requirements
 
 **FR‑1** Salla OAuth install: store tokens & webhook secret securely.
