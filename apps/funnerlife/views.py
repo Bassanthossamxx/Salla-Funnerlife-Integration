@@ -29,7 +29,11 @@ def get_services(request):
             "gold_price": float(s.price_gold or 0),
             "silver_price": float(s.price_silver or 0),
             "pro_price": float(s.price_pro or 0),
-            "status": "active" if (s.status or "").lower() == "aktif" else s.status,
+            "status": (
+                "active" if (s.status or "").lower() == "aktif"
+                else "inactive" if (s.status or "").lower() == "tidak aktif"
+                else s.status
+            ),
         }
         for s in filtered_qs
     ]
