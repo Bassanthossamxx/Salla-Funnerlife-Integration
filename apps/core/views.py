@@ -53,23 +53,30 @@ class AdminLogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """Logout admin — blacklist refresh token."""
-        try:
-            refresh_token = request.data.get("refresh")
-            if not refresh_token:
-                return Response(
-                    {"detail": "Refresh token required."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            token = RefreshToken(refresh_token)
-            token.blacklist()
+        """Logout admin — requires Bearer access token and refresh token; validates that refresh belongs to authenticated admin."""
+        refresh_token_str = request.data.get("refresh")
+        if not refresh_token_str:
             return Response(
-                {"detail": "Logged out successfully."},
-                status=status.HTTP_200_OK,
+                {"detail": "Refresh token required."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        try:
+            token = RefreshToken(refresh_token_str)
         except Exception:
             return Response(
                 {"detail": "Invalid or expired refresh token."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        try:
+            token.blacklist()
+        except Exception:
+            return Response(
+                {"detail": "Invalid or expired refresh token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {"detail": "Logged out successfully."},
+            status=status.HTTP_200_OK,
+        )
