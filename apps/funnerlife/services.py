@@ -2,6 +2,8 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import FunnerLifeService
 from .client import FunnerLifeAPIClient
+from django.conf import settings
+
 
 ALLOWED_CATEGORIES = [
     "Free Fire",
@@ -52,3 +54,4 @@ def fetch_and_cache_services(force_refresh=False):
 
     print(f" Synced {len(filtered)} services.")
     return FunnerLifeService.objects.filter(category__in=ALLOWED_CATEGORIES)
+

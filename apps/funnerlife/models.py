@@ -15,3 +15,11 @@ class FunnerLifeService(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.category})"
+
+class FunnerlifeTransaction(models.Model):
+    idtrx = models.CharField(max_length=255, unique=True)
+    order = models.ForeignKey("salla.SallaOrder", on_delete=models.CASCADE)
+    sku = models.CharField(max_length=255)
+    target = models.CharField(max_length=255)
+    response = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)

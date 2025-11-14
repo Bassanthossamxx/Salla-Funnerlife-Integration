@@ -7,6 +7,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 SALLA_WEBHOOK_SECRET = os.getenv("SALLA_WEBHOOK_SECRET")
+import os
+
+ADMIN_KONTAK = os.getenv("ADMIN_KONTAK", "6000000000")
+
+GAMES_REQUIRING_ZONE = {
+    "Mobile Legends",
+    "Genshin Impact",
+    "Honor of Kings",
+}
+
+ZONE_ID_MAP = {
+    "Mobile Legends": "9923",      # <-- REAL value from FunnerLife
+    "Genshin Impact": "84000001",  # <-- REAL value from FunnerLife
+    "Honor of Kings": "2001",      # <-- REAL value from FunnerLife
+}
 
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY') or os.getenv('SECRET_KEY')
 

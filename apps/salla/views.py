@@ -1,4 +1,33 @@
-# salla/views.py
+import json
+import hmac
+import hashlib
+import os
+from datetime import datetime
+
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+
+from .models import WebhookEvent, SallaOrder, IntegrationToken
+
+from apps.funnerlife.client import charge_funnerlife
+from apps.funnerlife.models import FunnerlifeTransaction
+from apps.funnerlife.services import FUNNER_SERVICES_CACHE
+
+
+ORDER_EVENTS = [
+    "order.created",
+    "order.updated",
+    "order.status.updated",
+    "order.payment.updated",
+    "invoice.created",
+]
+from apps.funnerlife.services import (
+    extract_player_id,
+    extract_zone_id,
+    build_target,
+)
+
 
 import json
 import hmac
@@ -10,10 +39,12 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-
 from .models import WebhookEvent, SallaOrder, IntegrationToken
+
+from apps.funnerlife.client import charge_funnerlife
+from apps.funnerlife.models import FunnerlifeTransaction
+from apps.funnerlife.services import FUNNER_SERVICES_CACHE
+
 from .client import fetch_order_details_from_salla
 
 
@@ -28,7 +59,7 @@ ORDER_EVENTS = [
 
 @csrf_exempt
 def salla_webhook(request):
-    # GET: List webhooks
+    # GET: return list of recent webhook events
     if request.method == "GET":
         events = WebhookEvent.objects.order_by("-received_at")[:100]
         return JsonResponse({
@@ -44,23 +75,23 @@ def salla_webhook(request):
             ]
         }, status=200)
 
-    # POST: Process webhook
-    body = request.body
+    # POST: process webhook
+    body = request.body or b""
 
-    # Validate signature
+    # === HMAC SIGNATURE VALIDATION ===
     secret = os.getenv("SALLA_WEBHOOK_SECRET")
     signature = request.headers.get("x-salla-signature")
-
     valid_signature = False
+
     if secret and signature:
         computed = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
         valid_signature = hmac.compare_digest(signature, computed)
         if not valid_signature:
             return HttpResponse(status=401)
 
-    # Parse JSON
+    # === PARSE PAYLOAD ===
     try:
-        payload = json.loads(body or "{}")
+        payload = json.loads(body)
     except:
         payload = {}
 
@@ -68,14 +99,15 @@ def salla_webhook(request):
     event_id = payload.get("event_id") or f"auto-{timezone.now().timestamp()}"
     data = payload.get("data", {})
 
-    # Save webhook event
+    # === SAVE WEBHOOK EVENT ===
     WebhookEvent.objects.create(
         event_id=event_id,
         event_type=event_type,
         payload=payload,
-        signature_valid=valid_signature
+        signature_valid=valid_signature,
     )
-    # Token event (Easy Mode)
+
+    # === HANDLE INSTALL AUTH EVENT ===
     if event_type == "app.store.authorize":
         expires_unix = data.get("expires")
         expires_at = datetime.fromtimestamp(expires_unix) if expires_unix else None
@@ -89,25 +121,22 @@ def salla_webhook(request):
             }
         )
         return JsonResponse({"token_saved": True})
-    # Ignore non-order events
+
+    # === IGNORE NON-ORDER EVENTS ===
     if event_type not in ORDER_EVENTS:
         return JsonResponse({"ignored": True})
 
-    # Extract order_id
-    order_id = (
-            data.get("id") or
-            data.get("order_id") or
-            data.get("checkout_id")
-    )
-
+    # === EXTRACT ORDER ID ===
+    order_id = data.get("id") or data.get("order_id") or data.get("checkout_id")
     if not order_id:
         return JsonResponse({"no_order_id": True})
 
-    # Fetch full order details
+    # === FETCH FULL ORDER DETAILS ===
     full_order = fetch_order_details_from_salla(order_id)
     status_slug = full_order.get("status", {}).get("slug", "")
 
-    SallaOrder.objects.update_or_create(
+    # === SAVE ORDER SNAPSHOT ===
+    salla_order, _ = SallaOrder.objects.update_or_create(
         order_id=order_id,
         defaults={
             "full_payload": full_order,
@@ -116,7 +145,55 @@ def salla_webhook(request):
         }
     )
 
+    # === FUNNERLIFE CHARGE TRIGGER =====
+    if status_slug in ["paid", "processing", "under_review"]:
+        items = full_order.get("items", [])
+
+        for item in items:
+            sku = item.get("sku")
+            if not sku:
+                continue
+
+            # Find matching FunnerLife service
+            funner_service = FUNNER_SERVICES_CACHE.get(sku)
+            if not funner_service:
+                continue
+
+            # Idempotency: avoid double charge
+            if FunnerlifeTransaction.objects.filter(
+                    order_id=order_id,
+                    sku=sku
+            ).exists():
+                continue
+
+            # Extract Player ID
+            player_id = extract_player_id(item)
+
+            # Extract Zone ID only IF there is options[1]
+            zone_id = None
+            try:
+                zone_id = extract_zone_id(item)
+            except:
+                pass  # acceptable for games without zone
+
+            # Build target
+            target = build_target(player_id, zone_id)
+
+            # Perform charge
+            result = charge_funnerlife(item, funner_service)
+
+            # Store transaction
+            FunnerlifeTransaction.objects.create(
+                idtrx=result["idtrx"],
+                order=salla_order,
+                sku=sku,
+                target=target,
+                response=result["response_payload"],
+            )
+
     return JsonResponse({"saved": True})
+
+
 
 
 # Dashboard: list saved orders

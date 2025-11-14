@@ -2,8 +2,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .services import fetch_and_cache_services
-from .models import FunnerLifeService
+from .models import FunnerLifeService , FunnerlifeTransaction
 from .filters import FunnerLifeServiceFilter
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
 
 
 @api_view(["GET"])
@@ -44,3 +47,33 @@ def get_services(request):
         response["category_counts"] = list(counts)
 
     return Response(response)
+
+
+@csrf_exempt
+def funnerlife_callback(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except:
+        return JsonResponse({"error": "invalid json"}, status=400)
+
+    idtrx = data.get("idtrx")
+    status_ = data.get("status")
+    keterangan = data.get("keterangan", "")
+
+    if not idtrx:
+        return JsonResponse({"error": "missing idtrx"}, status=400)
+
+    # Lookup your transaction
+    try:
+        trx = FunnerlifeTransaction.objects.get(idtrx=idtrx)
+    except FunnerlifeTransaction.DoesNotExist:
+        return JsonResponse({"error": "transaction not found"}, status=404)
+
+    # Store callback info in response JSON
+    trx.response["callback"] = data
+    trx.save()
+
+    return JsonResponse({"received": True})
