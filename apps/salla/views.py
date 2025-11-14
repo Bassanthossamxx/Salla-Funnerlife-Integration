@@ -1,61 +1,155 @@
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+# salla/views.py
+
+import json
+import hmac
+import hashlib
+import os
+from datetime import datetime
+
 from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
-from .models import WebhookEvent
-import hashlib, hmac, json, os
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+from .models import WebhookEvent, SallaOrder, IntegrationToken
+from .client import fetch_order_details_from_salla
+
+
+ORDER_EVENTS = [
+    "order.created",
+    "order.updated",
+    "order.status.updated",
+    "order.payment.updated",
+    "invoice.created",
+]
 
 
 @csrf_exempt
-@require_http_methods(["GET", "POST"])
 def salla_webhook(request):
-    # 🔹 GET → list all events
+
+    # ----------------------------------------
+    # GET: List webhooks
+    # ----------------------------------------
     if request.method == "GET":
-        events = WebhookEvent.objects.all().order_by("-received_at")[:50]
-        data = [
-            {
-                "event_id": e.event_id,
-                "event_type": e.event_type,
-                "received_at": e.received_at.isoformat(),
-                "signature_valid": e.signature_valid,
-            }
-            for e in events
-        ]
-        return JsonResponse({"count": len(data), "events": data})
+        events = WebhookEvent.objects.order_by("-received_at")[:100]
+        return JsonResponse({
+            "count": events.count(),
+            "events": [
+                {
+                    "event_id": e.event_id,
+                    "event_type": e.event_type,
+                    "signature_valid": e.signature_valid,
+                    "received_at": e.received_at.isoformat(),
+                }
+                for e in events
+            ]
+        }, status=200)
 
-    # 🔹 POST → handle webhook payload
-    secret = os.getenv("SALLA_WEBHOOK_SECRET")
+    # ----------------------------------------
+    # POST: Process webhook
+    # ----------------------------------------
     body = request.body
-    signature = request.headers.get("x-salla-signature")
-    strategy = request.headers.get("x-salla-security-strategy")
 
-    signature_valid = False
+    # Validate signature
+    secret = os.getenv("SALLA_WEBHOOK_SECRET")
+    signature = request.headers.get("x-salla-signature")
+
+    valid_signature = False
     if secret and signature:
-        computed_hmac = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-        signature_valid = hmac.compare_digest(signature, computed_hmac)
-        if not signature_valid:
-            print("❌ Invalid Salla signature")
+        computed = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        valid_signature = hmac.compare_digest(signature, computed)
+        if not valid_signature:
             return HttpResponse(status=401)
 
+    # Parse JSON
     try:
         payload = json.loads(body or "{}")
-    except json.JSONDecodeError:
+    except:
         payload = {}
 
-    event_type = payload.get("event", "unknown")
-    event_id = (
-            payload.get("event_id")
-            or payload.get("id")
-            or payload.get("data", {}).get("id")
-            or f"auto-{timezone.now().timestamp()}"
-    )
+    event_type = payload.get("event") or "unknown"
+    event_id = payload.get("event_id") or f"auto-{timezone.now().timestamp()}"
+    data = payload.get("data", {})
 
+    # Save webhook event
     WebhookEvent.objects.create(
         event_id=event_id,
         event_type=event_type,
         payload=payload,
-        signature_valid=signature_valid,
+        signature_valid=valid_signature
     )
 
-    print(f"✅ Webhook received: {event_type} | {event_id}")
-    return JsonResponse({"status": "received"}, status=200)
+    # ----------------------------------------
+    # Token event (Easy Mode)
+    # ----------------------------------------
+    if event_type == "app.store.authorize":
+        expires_unix = data.get("expires")
+        expires_at = datetime.fromtimestamp(expires_unix) if expires_unix else None
+
+        IntegrationToken.objects.update_or_create(
+            provider="SALLA",
+            defaults={
+                "access_token": data.get("access_token"),
+                "refresh_token": data.get("refresh_token"),
+                "expires_at": expires_at,
+            }
+        )
+        return JsonResponse({"token_saved": True})
+
+    # ----------------------------------------
+    # Ignore non-order events
+    # ----------------------------------------
+    if event_type not in ORDER_EVENTS:
+        return JsonResponse({"ignored": True})
+
+    # Extract order_id
+    order_id = (
+            data.get("id") or
+            data.get("order_id") or
+            data.get("checkout_id")
+    )
+
+    if not order_id:
+        return JsonResponse({"no_order_id": True})
+
+    # ----------------------------------------
+    # Fetch full order details
+    # ----------------------------------------
+    full_order = fetch_order_details_from_salla(order_id)
+    status_slug = full_order.get("status", {}).get("slug", "")
+
+    SallaOrder.objects.update_or_create(
+        order_id=order_id,
+        defaults={
+            "full_payload": full_order,
+            "standard_status": status_slug,
+            "last_event": event_type,
+        }
+    )
+
+    return JsonResponse({"saved": True})
+
+
+# ----------------------------------------
+# Dashboard: list saved orders
+# ----------------------------------------
+@api_view(["GET"])
+def list_orders(request):
+    qs = SallaOrder.objects.order_by("-updated_at")
+
+    return Response({
+        "count": qs.count(),
+        "orders": [
+            {
+                "order_id": o.order_id,
+                "standard_status": o.standard_status,
+                "custom_status": o.custom_status,
+                "last_event": o.last_event,
+                "updated_at": o.updated_at,
+            }
+            for o in qs
+        ]
+    })
+
