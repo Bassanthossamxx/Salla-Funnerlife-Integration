@@ -22,6 +22,7 @@ class FunnerLifeAPIClient:
                 print(f"FunnerLife API Error: {data.get('msg')}")
                 return []
         except Exception as e:
-            print(f"Error fetching services: {e}")
-            return []
+             print(f"Error fetching services: {e}")
+             return None
+
 

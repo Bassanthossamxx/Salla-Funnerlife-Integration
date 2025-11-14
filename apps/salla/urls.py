@@ -1,8 +1,8 @@
 from django.urls import path
-from .views import salla_webhook, list_orders , sync_all_orders
+from .views import salla_webhook, list_orders , get_order_details
 urlpatterns = [
     path("webhook/", salla_webhook),
     path("orders/", list_orders),
-    path("orders/sync/", sync_all_orders),
-
+    path("orders/<int:order_id>/", get_order_details),
 ]
+

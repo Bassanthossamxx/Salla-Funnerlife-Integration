@@ -12,6 +12,7 @@ def get_services(request):
     """Return filtered, sorted FunnerLife services with optional counts."""
     services_qs = fetch_and_cache_services()
 
+
     # Apply filters and sorting
     filters = FunnerLifeServiceFilter(services_qs, request.GET)
     filtered_qs = filters.filter_queryset()

@@ -52,6 +52,22 @@ def get_salla_access_token():
 
     return token.access_token
 
+def fetch_order_items(order_id):
+    access_token = get_salla_access_token()
+
+    url = f"{BASE_URL}orders/items"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    try:
+        res = requests.get(url, headers=headers, params={"order_id": order_id}, timeout=15)
+        if res.status_code == 200:
+            return res.json().get("data", []) or []
+        else:
+            print("Error fetching items:", res.status_code, res.text)
+    except Exception as e:
+        print("Exception fetching items:", e)
+
+    return []  # always safe fallback
 
 def fetch_order_details_from_salla(order_id):
     access_token = get_salla_access_token()
@@ -62,14 +78,23 @@ def fetch_order_details_from_salla(order_id):
         "Content-Type": "application/json",
     }
 
+    full = {}
+
     try:
         res = requests.get(url, headers=headers, timeout=15)
 
         if res.status_code != 200:
             print("Error fetching order details:", res.status_code, res.text)
-            return {}  # IMPORTANT — always return a dict
+            full = {}
+        else:
+            full = res.json().get("data", {}) or {}
 
-        return res.json().get("data", {}) or {}  # NEVER return None
     except Exception as e:
         print("Exception during order fetch:", e)
-        return {}  # IMPORTANT
+        full = {}
+
+    # 🔥 ALWAYS fetch item details from correct endpoint
+    items = fetch_order_items(order_id)
+    full["items"] = items
+
+    return full

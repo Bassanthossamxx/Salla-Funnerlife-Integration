@@ -28,10 +28,7 @@ ORDER_EVENTS = [
 
 @csrf_exempt
 def salla_webhook(request):
-
-    # ----------------------------------------
     # GET: List webhooks
-    # ----------------------------------------
     if request.method == "GET":
         events = WebhookEvent.objects.order_by("-received_at")[:100]
         return JsonResponse({
@@ -47,9 +44,7 @@ def salla_webhook(request):
             ]
         }, status=200)
 
-    # ----------------------------------------
     # POST: Process webhook
-    # ----------------------------------------
     body = request.body
 
     # Validate signature
@@ -80,10 +75,7 @@ def salla_webhook(request):
         payload=payload,
         signature_valid=valid_signature
     )
-
-    # ----------------------------------------
     # Token event (Easy Mode)
-    # ----------------------------------------
     if event_type == "app.store.authorize":
         expires_unix = data.get("expires")
         expires_at = datetime.fromtimestamp(expires_unix) if expires_unix else None
@@ -97,10 +89,7 @@ def salla_webhook(request):
             }
         )
         return JsonResponse({"token_saved": True})
-
-    # ----------------------------------------
     # Ignore non-order events
-    # ----------------------------------------
     if event_type not in ORDER_EVENTS:
         return JsonResponse({"ignored": True})
 
@@ -114,9 +103,7 @@ def salla_webhook(request):
     if not order_id:
         return JsonResponse({"no_order_id": True})
 
-    # ----------------------------------------
     # Fetch full order details
-    # ----------------------------------------
     full_order = fetch_order_details_from_salla(order_id)
     status_slug = full_order.get("status", {}).get("slug", "")
 
@@ -132,9 +119,7 @@ def salla_webhook(request):
     return JsonResponse({"saved": True})
 
 
-# ----------------------------------------
 # Dashboard: list saved orders
-# ----------------------------------------
 @api_view(["GET"])
 def list_orders(request):
     qs = SallaOrder.objects.order_by("-updated_at")
@@ -151,5 +136,35 @@ def list_orders(request):
             }
             for o in qs
         ]
+    })
+
+# Dashboard: order details
+@api_view(["GET"])
+def get_order_details(request, order_id):
+    """
+    Return a single saved order + optionally refreshed details from Salla.
+    """
+    try:
+        order = SallaOrder.objects.get(order_id=order_id)
+    except SallaOrder.DoesNotExist:
+        return Response({"error": "Order not found"}, status=404)
+
+    # Optional: Fetch fresh details from Salla (if ?refresh=true)
+    refresh = request.GET.get("refresh") == "true"
+
+    if refresh:
+        full = fetch_order_details_from_salla(order_id)
+        if full:
+            order.full_payload = full
+            order.standard_status = full.get("status", {}).get("slug", "")
+            order.save()
+
+    return Response({
+        "order_id": order.order_id,
+        "standard_status": order.standard_status,
+        "custom_status": order.custom_status,
+        "last_event": order.last_event,
+        "updated_at": order.updated_at,
+        "full_payload": order.full_payload,
     })
 
