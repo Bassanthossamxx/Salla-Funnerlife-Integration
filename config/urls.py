@@ -8,7 +8,9 @@ urlpatterns = [
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-    # API namespaces
-    path("api/funnerlife/", include("apps.funnerlife.urls")),
+    #core app
     path("",include("apps.core.urls")),
+    # API for integrations
+    path("api/funnerlife/", include("apps.funnerlife.urls")),
+    path("api/salla/", include("apps.salla.urls")),
 ]
