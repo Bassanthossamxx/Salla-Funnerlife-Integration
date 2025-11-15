@@ -1,3 +1,4 @@
+
 def extract_player_id(item):
     opts = item.get("options", [])
     if len(opts) < 1:
@@ -18,6 +19,7 @@ def extract_zone_id(item):
     values = opts[1].get("value", [])
     return values[0] if values else None
 
+
 def build_target(player_id, zone_id, funner_service):
     category = funner_service.get("category")
 
@@ -26,4 +28,3 @@ def build_target(player_id, zone_id, funner_service):
         return f"{player_id}|{zone_id}"
 
     return player_id
-

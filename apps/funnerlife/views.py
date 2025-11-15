@@ -1,8 +1,7 @@
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .services import fetch_and_cache_services
-from .models import FunnerLifeService , FunnerlifeTransaction
+from .models import FunnerLifeService, FunnerlifeTransaction
 from .filters import FunnerLifeServiceFilter
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -10,11 +9,9 @@ import json
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
 def get_services(request):
     """Return filtered, sorted FunnerLife services with optional counts."""
     services_qs = fetch_and_cache_services()
-
 
     # Apply filters and sorting
     filters = FunnerLifeServiceFilter(services_qs, request.GET)

@@ -8,44 +8,15 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 
-from .models import WebhookEvent, SallaOrder, IntegrationToken
-
-from apps.funnerlife.client import charge_funnerlife
-from apps.funnerlife.models import FunnerlifeTransaction
-from apps.funnerlife.services import FUNNER_SERVICES_CACHE
-
-
-ORDER_EVENTS = [
-    "order.created",
-    "order.updated",
-    "order.status.updated",
-    "order.payment.updated",
-    "invoice.created",
-]
-from apps.funnerlife.services import (
-    extract_player_id,
-    extract_zone_id,
-    build_target,
-)
-
-
-import json
-import hmac
-import hashlib
-import os
-from datetime import datetime
-
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.utils import timezone
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 from .models import WebhookEvent, SallaOrder, IntegrationToken
-
-from apps.funnerlife.client import charge_funnerlife
-from apps.funnerlife.models import FunnerlifeTransaction
-from apps.funnerlife.services import FUNNER_SERVICES_CACHE
-
 from .client import fetch_order_details_from_salla
+
+from apps.funnerlife.client import charge_funnerlife
+from apps.funnerlife.models import FunnerlifeTransaction, FunnerLifeService
+from apps.salla.services import extract_player_id, extract_zone_id, build_target
 
 
 ORDER_EVENTS = [
@@ -154,9 +125,10 @@ def salla_webhook(request):
             if not sku:
                 continue
 
-            # Find matching FunnerLife service
-            funner_service = FUNNER_SERVICES_CACHE.get(sku)
-            if not funner_service:
+            # Find matching FunnerLife service (by service_id == sku)
+            try:
+                funner_service = FunnerLifeService.objects.get(service_id=sku)
+            except FunnerLifeService.DoesNotExist:
                 continue
 
             # Idempotency: avoid double charge
@@ -177,10 +149,10 @@ def salla_webhook(request):
                 pass  # acceptable for games without zone
 
             # Build target
-            target = build_target(player_id, zone_id)
+            target = build_target(player_id, zone_id, {"category": funner_service.category})
 
             # Perform charge
-            result = charge_funnerlife(item, funner_service)
+            result = charge_funnerlife(item, {"category": funner_service.category})
 
             # Store transaction
             FunnerlifeTransaction.objects.create(
@@ -192,8 +164,6 @@ def salla_webhook(request):
             )
 
     return JsonResponse({"saved": True})
-
-
 
 
 # Dashboard: list saved orders
@@ -214,6 +184,7 @@ def list_orders(request):
             for o in qs
         ]
     })
+
 
 # Dashboard: order details
 @api_view(["GET"])
@@ -244,4 +215,3 @@ def get_order_details(request, order_id):
         "updated_at": order.updated_at,
         "full_payload": order.full_payload,
     })
-
